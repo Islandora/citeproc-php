@@ -211,7 +211,7 @@ class csl_element extends csl_collection {
 
   function get_hier_attributes() {
     $hier_attr = array();
-    $hier_names = array('and', 'delimiter-precedes-last', 'et-al-min', 'et-al-use-first',
+    $hier_names = array('and', 'delimiter-precedes-last', 'et-al-min', 'et-al-use-first', 'et-al-use-last',
                         'et-al-subsequent-min', 'et-al-subsequent-use-first', 'initialize-with',
                         'name-as-sort-order', 'sort-separator', 'name-form', 'name-delimiter',
                         'names-delimiter');
@@ -545,6 +545,7 @@ class csl_name extends csl_format {
     $count = 0;
     $auth_count = 0;
     $et_al_triggered = FALSE;
+    $et_al_last_triggered = FALSE;
 
     if (!$this->attr_init || $this->attr_init != $mode) $this->init_attrs($mode);
 
@@ -601,50 +602,77 @@ class csl_name extends csl_format {
       }
       if(isset($name->family)) {
         $name->family = $this->format($name->family, 'family');
+        $text = FALSE;
+
         if ($this->form == 'short') {
           $text = $ndp . $name->family;
         }
-        else {
-          switch ($this->{'name-as-sort-order'}) {
-            case 'first' && $rank == 0:
-            case 'all':
-              $text = $ndp . $name->family . $this->sort_separator . $given;
-              break;
-            default:
-              $text = $given .' '. $ndp . $name->family . $suffix;
+        elseif (isset($this->{'name-as-sort-order'})) {
+          $naso = $this->{'name-as-sort-order'};
+          if ($naso == 'all' || ($naso == 'first' && $rank == 0)) {
+            $text = $ndp . $name->family . $this->sort_separator . $given;
           }
         }
+        if (!$text) {
+          $text = $given .' '. $ndp . $name->family . $suffix;
+        }
+
         $authors[] = trim($this->format($text));
       }
-      if (isset($this->{'et-al-min'}) && $count >= $this->{'et-al-min'}) break;
+
+      if (isset($this->{'et-al-min'}) && $count >= $this->{'et-al-min'} && (
+        !isset($this->{'et-al-use-last'}) || (isset($this->{'et-al-use-last'}) && $this->{'et-al-use-last'} != 'true')
+      ))
+        break;
     }
+
     if (isset($this->{'et-al-min'}) &&
       $count >= $this->{'et-al-min'} &&
       isset($this->{'et-al-use-first'}) &&
       $count >= $this->{'et-al-use-first'} &&
       count($names) >  $this->{'et-al-use-first'}) {
       if ($this->{'et-al-use-first'} < $this->{'et-al-min'}) {
-        for ($i = $this->{'et-al-use-first'}; $i < $count; $i++) {
+        $et_al_last_author = 0;
+        if(isset($this->{'et-al-use-last'}) && $this->{'et-al-use-last'} == 'true') {
+            $et_al_last_author = 1;
+        }
+
+        for ($i = $this->{'et-al-use-first'}; $i < $count - $et_al_last_author; $i++) {
           unset($authors[$i]);
         }
       }
-      if ($this->etal) {
-        $etal = $this->etal->render();
+      if(isset($this->{'et-al-use-last'}) && $this->{'et-al-use-last'} == 'true') {
+        $authors[] = '… ' . array_pop($authors);
+        $et_al_last_triggered = TRUE;
       }
       else {
-        $etal = $this->citeproc->get_locale('term', 'et-al');
+        if ($this->etal) {
+          $etal = $this->etal->render();
+        }
+        else {
+          $etal = $this->citeproc->get_locale('term', 'et-al');
+        }
+        $et_al_triggered = TRUE;
       }
-      $et_al_triggered = TRUE;
     }
 
-    if (!empty($authors) && !$et_al_triggered) {
+    if (!empty($authors) && !($et_al_triggered || $et_al_last_triggered)) {
       $auth_count = count($authors);
       if (isset($this->and) && $auth_count > 1) {
         $authors[$auth_count-1] = $this->and . ' ' . $authors[$auth_count-1]; //stick an "and" in front of the last author if "and" is defined
       }
     }
+    if(isset($this->{'et-al-use-last'}) && $this->{'et-al-use-last'} == 'true') {
+      $before_ellipsis = array_slice($authors, 0, $this->{'et-al-use-first'});
 
-    $text = implode($this->delimiter, $authors);
+      $text = implode($this->delimiter, $before_ellipsis);
+      if(count($authors) > $this->{'et-al-use-first'}) {
+        $text = $text . $this->delimiter . array_pop($authors);
+      }
+    }
+    else {
+      $text = implode($this->delimiter, $authors);
+    }
 
     if (!empty($authors) && $et_al_triggered) {
       switch($this->{'delimiter-precedes-et-al'}) {
@@ -668,7 +696,7 @@ class csl_name extends csl_format {
      }
    }
     // strip out the last delimiter if not required
-    if (isset($this->and) && $auth_count > 1) {
+    if (isset($this->and) && $auth_count > 1 && !($et_al_triggered || $et_al_last_triggered)) {
       $last_delim =  strrpos($text, $this->delimiter . $this->and);
       switch ($this->dpl) { //dpl == delimiter proceeds last
         case 'always':
