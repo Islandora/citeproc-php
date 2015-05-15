@@ -968,14 +968,20 @@ class csl_date extends csl_format {
     $text = '';
 
     if (($var = $this->variable) && isset($data->{$var})) {
-      $date = $data->{$var}->{'date-parts'}[0];
-      foreach ($this->elements as $element) {
-        $date_parts[] = $element->render($date, $mode);
+      if (isset($data->{$var}->{'date-parts'})) {
+        $date = $data->{$var}->{'date-parts'}[0];
+        foreach ($this->elements as $element) {
+          $date_parts[] = $element->render($date, $mode);
+        }
+        $text = implode('', $date_parts);
+        return $this->format($text);
       }
-      $text = implode('', $date_parts);
+      else if (isset($data->{$var}->{'literal'})) {
+        return $data->{$var}->{'literal'};
+      }
     }
 
-    return $this->format($text);
+    return $text;
   }
 }
 
