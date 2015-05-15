@@ -981,7 +981,7 @@ class csl_date extends csl_format {
       }
     }
 
-    return $text;
+    return $this->citeproc->get_locale('term', 'no date');
   }
 }
 
