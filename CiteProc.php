@@ -977,7 +977,7 @@ class csl_date extends csl_format {
         return $this->format($text);
       }
       else if (isset($data->{$var}->{'literal'})) {
-        return $data->{$var}->{'literal'};
+        return $this->format($text);
       }
     }
 
